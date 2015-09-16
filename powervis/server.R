@@ -4,12 +4,29 @@ library('ggplot2')
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
 
-  # Expression that generates a histogram. The expression is
-  # wrapped in a call to renderPlot to indicate that:
-  #
-  #  1) It is "reactive" and therefore should be automatically
-  #     re-executed when inputs change
-  #  2) Its output type is a plot
+  range_selection <- function(power, start, end) {
+    # Convert Time strings to actual Time format 
+    power$Time = as.POSIXct(power$TimeRAW)
+
+    t_start = power$Time[1]
+    t_end = power$Time[length(power$Time)]
+    t_length = difftime(t_end,t_start,units="secs")
+
+    t_sel_start = t_start + (start/100.0)*t_length
+    t_sel_end = t_end - ((100-end)/100.0)*t_length
+    t_sel_length = difftime(t_sel_end,t_sel_start,units="secs")
+
+    power_sel=power[power$Time>=t_sel_start & power$Time<=t_sel_end,]
+    return(power_sel)
+  }
+  
+  time_gaps <- function(times) {
+    gaps=NULL
+    for (i in 2:length(times)) {
+      gaps[i-1] = difftime(times[i],times[i-1],units="secs")
+    }
+    return(gaps)
+  }
 
   output$summary <- renderPrint({
     file=gsub(" ", "", paste("/var/log/power/",input$resource))
@@ -22,24 +39,10 @@ shinyServer(function(input, output) {
   })
 
   output$analysis <- renderPrint({
-
     file=gsub(" ", "", paste("/var/log/power/",input$resource))
     cat(paste("Stats for SELECTED power data in: ", file, "\n"))
-    power = read.csv(file, col.names=c("Resource","TimeRAW","Power"))
-    power$Time = as.POSIXct(power$TimeRAW)
-
-    t_start = power$Time[1]
-    t_end = power$Time[length(power$Time)]
-    t_length = difftime(t_end,t_start,units="secs")
-    #cat(paste("Times: ", t_start, " ", t_end, " ", t_length, "\n"))
-
-    t_sel_start = t_start + (input$SelectionRange[1]/100.0)*t_length
-    t_sel_end = t_end - ((100-input$SelectionRange[2])/100.0)*t_length
-    t_sel_length = difftime(t_sel_end,t_sel_start,units="secs")
-    #cat(paste("Times: ", t_sel_start, " ", t_sel_end, " ", t_sel_length, "\n"))
-
-    power_sel=power[power$Time>=t_sel_start & power$Time<=t_sel_end,]
-    power=power_sel
+    power_all = read.csv(file, col.names=c("Resource","TimeRAW","Power"))
+    power = range_selection(power_all, start=input$SelectionRange[1], end=input$SelectionRange[2])
 
     ot=power$Time[1]
     cat(paste("The oldest timestamp: ", ot, "\n"))
@@ -51,24 +54,37 @@ shinyServer(function(input, output) {
   })
 
   output$Scatter <- renderPlot({
-
     file=gsub(" ", "", paste("/var/log/power/",input$resource))
-    power = read.csv(file, col.names=c("Resource","TimeRAW","Power"))
-    power$Time = as.POSIXct(power$TimeRAW)
-
-    t_start = power$Time[1]
-    t_end = power$Time[length(power$Time)]
-    t_length = difftime(t_end,t_start,units="secs")
-    cat(paste("Times: ", t_start, " ", t_end, " ", t_length, "\n"))
-
-    t_sel_start = t_start + (input$SelectionRange[1]/100.0)*t_length
-    t_sel_end = t_end - ((100-input$SelectionRange[2])/100.0)*t_length
-    t_sel_length = difftime(t_sel_end,t_sel_start,units="secs")
-
-    power_sel=power[power$Time>=t_sel_start & power$Time<=t_sel_end,]
-    power=power_sel
-
+    power_all = read.csv(file, col.names=c("Resource","TimeRAW","Power"))
+    power = range_selection(power_all, start=input$SelectionRange[1], end=input$SelectionRange[2])
+    
     qplot(power$Time, power$Power) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + geom_line() + geom_point()
   })
 
+  output$HistPower <- renderPlot({
+    file=gsub(" ", "", paste("/var/log/power/",input$resource))
+    power_all = read.csv(file, col.names=c("Resource","TimeRAW","Power"))
+    power = range_selection(power_all, start=input$SelectionRange[1], end=input$SelectionRange[2])
+
+    qplot(power$Power,
+      geom="histogram",
+      main = "Histogram for Power",
+      xlab = "Power, Watts",
+      fill=I("blue"),
+      col=I("black"))
+  })
+
+  output$HistGaps <- renderPlot({
+    file=gsub(" ", "", paste("/var/log/power/",input$resource))
+    power_all = read.csv(file, col.names=c("Resource","TimeRAW","Power"))
+    power = range_selection(power_all, start=input$SelectionRange[1], end=input$SelectionRange[2])
+    gaps = time_gaps(power$Time)
+
+    qplot(gaps,
+      geom="histogram",
+      main = "Histogram for Gaps between Measurements",
+      xlab = "Seconds",
+      fill=I("red"),
+      col=I("black"))
+  })
 })
