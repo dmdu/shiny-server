@@ -36,6 +36,15 @@ shinyServer(function(input, output) {
 
     power_display = data.frame(power$Time, power$Power)
     print(summary(power_display))
+
+    susp_num=sum(power$Power<=10)
+    cat(paste("Number of suspicious samples (power<10): ", susp_num, "\n"))
+    if (susp_num > 0) {
+      cat("First 10 suspicious samples:\n")
+      h=head(power[power$Power<=10,], 10) 
+      print(h[,c("Resource","TimeRAW","Power")])
+    }
+    
   })
 
   output$analysis <- renderPrint({
