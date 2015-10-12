@@ -7,6 +7,18 @@ shinyServer(function(input, output) {
   # Moving average function
   ma <- function(z,n=input$AvgWindow){filter(z,rep(1/n,n), sides=1)}
 
+  # Syncronization - waits until a file with a given name is created
+  wait_until_available <- function(filename, delay) { 
+    while (TRUE) {
+      if (file.exists(filename)) {
+        break
+      }
+      else {
+        Sys.sleep(delay)
+      }
+    }
+  }
+
   range_selection <- function(power, start, end) {
     # Convert Time strings to actual Time format 
     power$Time = as.POSIXct(power$TimeRAW)
@@ -36,10 +48,13 @@ shinyServer(function(input, output) {
   }
 
   output$summary <- renderPrint({
-    file=gsub(" ", "", paste("/var/log/power/",input$resource))
-    cat(paste("Stats for ALL power data in: ", file, "\n"))
-    power = read.csv(file, col.names=c("Resource","TimeRAW","Power"))
+
+    source_filename=gsub(" ", "", paste("/var/log/power/",input$resource))
+
+    cat(paste("Stats for ALL power data in: ", source_filename, "\n"))
+    power = read.csv(source_filename, col.names=c("Resource","TimeRAW","Power"))
     power$Time = as.POSIXct(power$TimeRAW)
+    
 
     power_display = data.frame(power$Time, power$Power)
     print(summary(power_display))
@@ -63,8 +78,15 @@ shinyServer(function(input, output) {
   })
 
   output$analysis <- renderPrint({
-    file=gsub(" ", "", paste("/var/log/power/",input$resource))
-    power_all = read.csv(file, col.names=c("Resource","TimeRAW","Power"))
+
+    source_filename=gsub(" ", "", paste("/var/log/power/",input$resource))
+    filename=gsub(" ", "",paste("/tmp/",input$resource,"-power"))
+    # Update if file exists from the previous run
+    if (file.exists(filename)) {
+      file.remove(filename)
+    }
+
+    power_all = read.csv(source_filename, col.names=c("Resource","TimeRAW","Power"))
  
     if (nrow(power_all) > 0) {
       # Select and prune
@@ -74,7 +96,7 @@ shinyServer(function(input, output) {
       if (nrow(power) >= input$AvgWindow) {
         enough_data = TRUE
 
-        cat(paste("Stats for SELECTED power data in: ", file, "\n"))
+        cat(paste("Stats for SELECTED power data in: ", source_filename, "\n"))
 
         # Adding a column with averaged power
         power$PowerAVG = ma(power$Power) 
@@ -106,11 +128,17 @@ shinyServer(function(input, output) {
     # Saving selected and pruned power data frame so it can be loaded by other functions
     # gsub deletes spaces present in input$resource
     # Boolean enough_data is also saved to prevent errors (if it is false, graphs won't be shown)
-    save(enough_data,power, file = gsub(" ", "",paste("/tmp/",input$resource,"-power")))
+    save(enough_data,power, file = filename)
   })
 
   output$Scatter <- renderPlot({
-    load(gsub(" ", "",paste("/tmp/",input$resource,"-power")))
+    # Avoid loading old file - let output$analysis <- renderPrint remove it
+    Sys.sleep(0.3)
+
+    filename=gsub(" ", "",paste("/tmp/",input$resource,"-power"))
+    wait_until_available(filename, 0.3)
+    load(filename)
+
     if (enough_data) {
       df1=data.frame(Time=power$Time, Power=power$Power)
       df2=data.frame(Time=power$Time, Power=power$PowerAVG)
@@ -126,7 +154,13 @@ shinyServer(function(input, output) {
   })
 
   output$HistPower <- renderPlot({
-    load(gsub(" ", "",paste("/tmp/",input$resource,"-power")))
+    # Avoid loading old file - let output$analysis <- renderPrint remove it
+    Sys.sleep(0.3)
+
+    filename=gsub(" ", "",paste("/tmp/",input$resource,"-power"))
+    wait_until_available(filename, 0.3)
+    load(filename) 
+
     if (enough_data) {
       qplot(power$Power,
         geom="histogram",
@@ -138,7 +172,13 @@ shinyServer(function(input, output) {
   })
 
   output$HistGaps <- renderPlot({
-    load(gsub(" ", "",paste("/tmp/",input$resource,"-power")))
+    # Avoid loading old file - let output$analysis <- renderPrint remove it
+    Sys.sleep(0.3)
+
+    filename=gsub(" ", "",paste("/tmp/",input$resource,"-power"))
+    wait_until_available(filename, 0.3)
+    load(filename)
+
     if (enough_data) {
       gaps = time_gaps(power$Time)
 
