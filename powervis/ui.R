@@ -26,7 +26,9 @@ shinyUI(pageWithSidebar(
     sliderInput("LowThresh", label = h4("Low Power Threshold"), min = 0, max = 50, value = 10),
     sliderInput("HighThresh", label = h4("High Power Threshold"), min = 100, max = 500, value = 300),
     hr(),
-    sliderInput("AvgWindow", label = h4("Averaging Window"), min = 0, max = 30, value = 3)
+    sliderInput("AvgWindow", label = h4("Averaging Window"), min = 0, max = 30, value = 3),
+    hr(),
+    sliderInput("SamplingLimit", label = h4("Sampling Limit"), min = 1, max = 30, value = 10)
   ),
 
 
@@ -36,6 +38,7 @@ shinyUI(pageWithSidebar(
     verbatimTextOutput("analysis"),
     plotOutput("Scatter", height=350),
     plotOutput("HistPower", height=150),
-    plotOutput("HistGaps", height=150)
+    plotOutput("HistGaps", height=150),
+    plotOutput("Sampling", height=250)
   )
 ))

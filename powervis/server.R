@@ -160,4 +160,38 @@ shinyServer(function(input, output) {
       }
     }
   })
+
+  output$Sampling <- renderPlot({
+    source_filename=get_input_filename(input$resource)
+    power_raw = read.csv(source_filename, col.names=c("Resource","TimeRAW","Power"))
+    if (nrow(power_raw) > 0) {
+      # Select and prune
+      power = power_filter(range_selection(power_raw, start=input$SelectionRange[1], end=input$SelectionRange[2]),input$LowThresh,input$HighThresh)
+      if (nrow(power) > 0) {
+        pow_vs_stride= data.frame("Stride"=integer(0), "TotalPower"=double(0), stringsAsFactors=FALSE)
+        for(stride in 1:input$SamplingLimit) 
+        {
+          power_sample = power[seq(1, nrow(power), by=stride),]
+          rownames(power_sample)=seq_len(nrow(power_sample))
+          # print(power_sample)
+          total_pow = 0
+          for (i in 1:(nrow(power_sample)-1))
+          {
+            h=(power_sample[i,])$Power
+            dt=as.numeric((power_sample[i+1,])$Time-(power_sample[i,])$Time, units="secs")
+            total_pow = total_pow + h*dt
+            #print(c(h,total_pow))
+          }
+          # Convert from J to kJ
+          total_pow = total_pow/1000
+          pow_vs_stride[nrow(pow_vs_stride)+1,]=c(stride,total_pow)
+        }
+        #print(pow_vs_stride)
+        ggplot(pow_vs_stride,aes(Stride,TotalPower))+
+        geom_point()+geom_line()+
+        xlab("X") + ylab("Total Power, kJ") + 
+        ggtitle("Effect of sampling on total power used over the selected interval\nEvery  X'th sample is used in the integral calculation")
+      }
+    }
+  })
 })
