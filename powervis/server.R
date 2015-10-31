@@ -168,29 +168,34 @@ shinyServer(function(input, output) {
       # Select and prune
       power = power_filter(range_selection(power_raw, start=input$SelectionRange[1], end=input$SelectionRange[2]),input$LowThresh,input$HighThresh)
       if (nrow(power) > 0) {
-        pow_vs_stride= data.frame("Stride"=integer(0), "TotalPower"=double(0), stringsAsFactors=FALSE)
+        pow_vs_stride= data.frame("Stride"=integer(0), "AvgGap"=double(0), "TotalPower"=double(0), stringsAsFactors=FALSE)
         for(stride in 1:input$SamplingLimit) 
         {
           power_sample = power[seq(1, nrow(power), by=stride),]
           rownames(power_sample)=seq_len(nrow(power_sample))
           # print(power_sample)
           total_pow = 0
-          for (i in 1:(nrow(power_sample)-1))
+          dt_sum = 0
+          lim = nrow(power_sample)-1
+          for (i in 1:lim)
           {
             h=(power_sample[i,])$Power
             dt=as.numeric((power_sample[i+1,])$Time-(power_sample[i,])$Time, units="secs")
+            dt_sum=dt_sum+dt
             total_pow = total_pow + h*dt
             #print(c(h,total_pow))
           }
+          dt_avg=round(dt_sum/lim,digits=2)
           # Convert from J to kJ
           total_pow = total_pow/1000
-          pow_vs_stride[nrow(pow_vs_stride)+1,]=c(stride,total_pow)
+          pow_vs_stride[nrow(pow_vs_stride)+1,]=c(stride,dt_avg,total_pow)
         }
         #print(pow_vs_stride)
         ggplot(pow_vs_stride,aes(Stride,TotalPower))+
         geom_point()+geom_line()+
+        geom_text(aes(label=AvgGap), vjust=-2, size=4)+
         xlab("X") + ylab("Total Power, kJ") + 
-        ggtitle("Effect of sampling on total power used over the selected interval\nEvery  X'th sample is used in the integral calculation")
+        ggtitle("Effect of sampling on total power used over the selected interval\nEvery  X'th sample is used in the integral calculation\n(marker labels indicate average intervals between samples in seconds)")
       }
     }
   })

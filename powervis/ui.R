@@ -11,7 +11,7 @@ default = power_files[1]
 
 shinyUI(pageWithSidebar(
 
-  headerPanel("Analysis of Experiment Power Data"),
+  headerPanel("Dashboard for Analysis of Experiment Power Data on CloudLab"),
 
   sidebarPanel(
     radioButtons("resource", label = h4("Select the source of power data"),
