@@ -28,6 +28,12 @@ shinyUI(pageWithSidebar(
     hr(),
     sliderInput("AvgWindow", label = h4("Averaging Window"), min = 0, max = 30, value = 3),
     hr(),
+    checkboxInput("DisplayEvents", label = "Display Events", value = TRUE),
+    checkboxInput("FocusOnEvents", label = "Override Selected Interval and Focus on Events", value = TRUE),
+    textInput("EventsFile", label = h4("Path to Events File"), value = "/var/log/runlog/index.log"),
+    sliderInput("AdjustEvents", label = h4("Adjustment for Events, Seconds"), min = -60, max = 60, value = 0),
+    hr(),
+    checkboxInput("SamplingAnalysis", label = "Enable Sampling Analysis", value = FALSE),
     sliderInput("SamplingLimit", label = h4("Sampling Limit"), min = 1, max = 30, value = 10)
   ),
 

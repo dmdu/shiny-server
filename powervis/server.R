@@ -10,6 +10,16 @@ shinyServer(function(input, output) {
   get_input_filename <- function(selected_resource) {
     source_filename=gsub(" ", "", paste("/var/log/power/",selected_resource))
   }
+  
+  get_events <- function() {
+    if (file.exists(input$EventsFile)) {
+      events = read.csv(input$EventsFile, col.names=c("Marker","Output","TimeRAW","TimeEpoch","Label","CMD"), header=FALSE)
+      return(data.frame(Time=as.POSIXct(events$TimeRAW), Marker=events$Marker))
+    }
+    else {
+      return(NULL)
+    }
+  }
 
   range_selection <- function(power, start, end) {
     # Convert Time strings to actual Time format 
@@ -71,7 +81,7 @@ shinyServer(function(input, output) {
   output$analysis <- renderPrint({
     source_filename=get_input_filename(input$resource)
     power_raw = read.csv(source_filename, col.names=c("Resource","TimeRAW","Power"))
- 
+
     if (nrow(power_raw) > 0) {
       # Select and prune
       power = power_filter(range_selection(power_raw, start=input$SelectionRange[1], end=input$SelectionRange[2]),input$LowThresh,input$HighThresh)
@@ -79,6 +89,9 @@ shinyServer(function(input, output) {
       # Number of samples needs to be at least as high as the size of the window for moving average 
       if (nrow(power) > 0) {
         cat(paste("Stats for SELECTED power data in: ", source_filename, "\n"))
+        power_display = data.frame(power$Time, power$Power)
+        print(summary(power_display))
+        cat(paste("Variance (sigma^2): ", sprintf("%.2f", var(power$Power)), "\n"))
 
         ot=power$Time[1]
         cat(paste("The oldest timestamp: ", ot, "\n"))
@@ -105,9 +118,22 @@ shinyServer(function(input, output) {
     source_filename=get_input_filename(input$resource)
     power_raw = read.csv(source_filename, col.names=c("Resource","TimeRAW","Power"))
     if (nrow(power_raw) > 0) {
-      # Select and prune
-      power = power_filter(range_selection(power_raw, start=input$SelectionRange[1], end=input$SelectionRange[2]),input$LowThresh,input$HighThresh)
+
+      events_raw = get_events()
+      if ((input$DisplayEvents) & (! is.null(events_raw)) & (input$FocusOnEvents)) {
+        # In this case, focus on events - select the interval based on the earliest and the latest event
+        power_raw$Time = as.POSIXct(power_raw$TimeRAW)
+        events=data.frame(Time=events_raw$Time+input$AdjustEvents, Marker=events_raw$Marker)
+        lb = min(events$Time)-30
+        ub = max(events$Time)+30
+        power=power_filter(power_raw[power_raw$Time>=lb & power_raw$Time<=ub,],input$LowThresh,input$HighThresh)
+      }
+      else {
+        # Otherwise, select the interval based on input for the SelectionRange widget
+        power = power_filter(range_selection(power_raw, start=input$SelectionRange[1], end=input$SelectionRange[2]),input$LowThresh,input$HighThresh)
+      }
       if (nrow(power) > input$AvgWindow) {
+
         # Adding a column with averaged power
         power$PowerAVG = ma(power$Power) 
         # Replacing initial NULL values with non-averaged values
@@ -115,11 +141,36 @@ shinyServer(function(input, output) {
 
         df1=data.frame(Time=power$Time, Power=power$Power)
         df2=data.frame(Time=power$Time, Power=power$PowerAVG)
-        ggplot(df1,aes(Time,Power))+geom_point(aes(color="Raw Samples"))+
-        geom_line(data=df2,aes(color="Moving Average"))+
-        labs(color="Series")+
-        theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-        theme(legend.position="bottom")
+        p = ggplot(df1,aes(Time,Power))+geom_point(aes(color="Raw Samples"))+
+          geom_line(data=df2,aes(color="Moving Average"))+
+          labs(color="Series")+
+          theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+          theme(legend.position="bottom")
+	
+        if (! input$DisplayEvents) {
+          # Display of events is disables via the checkbox
+          p
+        }
+        else { 
+          if (is.null(events_raw)) {
+            # Specified file doesn't exist, as reported get_events()
+            p
+          }
+          else {
+            events=data.frame(Time=events_raw$Time+input$AdjustEvents, Marker=events_raw$Marker)
+            if ( (power$Time[1] > events$Time[length(events$Time)]) | (power$Time[length(power$Time)] < events$Time[1]) ) {
+              # Events are outside of the selected range
+              p
+            }
+            else {
+              # Display events with vertical lines and labels if we get here
+              p+
+              geom_vline(xintercept=as.numeric(events$Time), color="blue")+
+              geom_text(data=events, mapping=aes(x=Time, y=0, label=Marker), size=4, angle=90, vjust=-0.6, hjust=0)
+            }
+          }
+        }
+        
       }
     }
   })
@@ -162,40 +213,43 @@ shinyServer(function(input, output) {
   })
 
   output$Sampling <- renderPlot({
-    source_filename=get_input_filename(input$resource)
-    power_raw = read.csv(source_filename, col.names=c("Resource","TimeRAW","Power"))
-    if (nrow(power_raw) > 0) {
-      # Select and prune
-      power = power_filter(range_selection(power_raw, start=input$SelectionRange[1], end=input$SelectionRange[2]),input$LowThresh,input$HighThresh)
-      if (nrow(power) > 0) {
-        pow_vs_stride= data.frame("Stride"=integer(0), "AvgGap"=double(0), "TotalPower"=double(0), stringsAsFactors=FALSE)
-        for(stride in 1:input$SamplingLimit) 
-        {
-          power_sample = power[seq(1, nrow(power), by=stride),]
-          rownames(power_sample)=seq_len(nrow(power_sample))
-          # print(power_sample)
-          total_pow = 0
-          dt_sum = 0
-          lim = nrow(power_sample)-1
-          for (i in 1:lim)
+
+    if (input$SamplingAnalysis) {
+      source_filename=get_input_filename(input$resource)
+      power_raw = read.csv(source_filename, col.names=c("Resource","TimeRAW","Power"))
+      if (nrow(power_raw) > 0) {
+        # Select and prune
+        power = power_filter(range_selection(power_raw, start=input$SelectionRange[1], end=input$SelectionRange[2]),input$LowThresh,input$HighThresh)
+        if (nrow(power) > 0) {
+          pow_vs_stride= data.frame("Stride"=integer(0), "AvgGap"=double(0), "TotalPower"=double(0), stringsAsFactors=FALSE)
+          for(stride in 1:input$SamplingLimit) 
           {
-            h=(power_sample[i,])$Power
-            dt=as.numeric((power_sample[i+1,])$Time-(power_sample[i,])$Time, units="secs")
-            dt_sum=dt_sum+dt
-            total_pow = total_pow + h*dt
-            #print(c(h,total_pow))
+            power_sample = power[seq(1, nrow(power), by=stride),]
+            rownames(power_sample)=seq_len(nrow(power_sample))
+            # print(power_sample)
+            total_pow = 0
+            dt_sum = 0
+            lim = nrow(power_sample)-1
+            for (i in 1:lim)
+            {
+              h=(power_sample[i,])$Power
+              dt=as.numeric((power_sample[i+1,])$Time-(power_sample[i,])$Time, units="secs")
+              dt_sum=dt_sum+dt
+              total_pow = total_pow + h*dt
+              #print(c(h,total_pow))
+            }
+            dt_avg=round(dt_sum/lim,digits=2)
+            # Convert from J to kJ
+            total_pow = total_pow/1000
+            pow_vs_stride[nrow(pow_vs_stride)+1,]=c(stride,dt_avg,total_pow)
           }
-          dt_avg=round(dt_sum/lim,digits=2)
-          # Convert from J to kJ
-          total_pow = total_pow/1000
-          pow_vs_stride[nrow(pow_vs_stride)+1,]=c(stride,dt_avg,total_pow)
+          #print(pow_vs_stride)
+          ggplot(pow_vs_stride,aes(Stride,TotalPower))+
+          geom_point()+geom_line()+
+          geom_text(aes(label=AvgGap), vjust=-2, size=4)+
+          xlab("X") + ylab("Total Power, kJ") + 
+          ggtitle("Effect of sampling on total power used over the selected interval\nEvery  X'th sample is used in the integral calculation\n(marker labels indicate average intervals between samples in seconds)")
         }
-        #print(pow_vs_stride)
-        ggplot(pow_vs_stride,aes(Stride,TotalPower))+
-        geom_point()+geom_line()+
-        geom_text(aes(label=AvgGap), vjust=-2, size=4)+
-        xlab("X") + ylab("Total Power, kJ") + 
-        ggtitle("Effect of sampling on total power used over the selected interval\nEvery  X'th sample is used in the integral calculation\n(marker labels indicate average intervals between samples in seconds)")
       }
     }
   })
