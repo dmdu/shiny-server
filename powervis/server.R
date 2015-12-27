@@ -10,6 +10,12 @@ shinyServer(function(input, output) {
   get_input_filename <- function(selected_resource) {
     source_filename=gsub(" ", "", paste("/var/log/power/",selected_resource))
   }
+  
+  get_events <- function(file_name) {
+    events = read.csv(file_name, col.names=c("Marker","Output","TimeRAW","TimeEpoch","Label","CMD"), header=FALSE)
+    events$Time = as.POSIXct(events$TimeRAW)
+    return(data.frame(Time=events$Time, Marker=events$Marker))
+  }
 
   range_selection <- function(power, start, end) {
     # Convert Time strings to actual Time format 
@@ -71,7 +77,7 @@ shinyServer(function(input, output) {
   output$analysis <- renderPrint({
     source_filename=get_input_filename(input$resource)
     power_raw = read.csv(source_filename, col.names=c("Resource","TimeRAW","Power"))
- 
+
     if (nrow(power_raw) > 0) {
       # Select and prune
       power = power_filter(range_selection(power_raw, start=input$SelectionRange[1], end=input$SelectionRange[2]),input$LowThresh,input$HighThresh)
@@ -79,7 +85,13 @@ shinyServer(function(input, output) {
       # Number of samples needs to be at least as high as the size of the window for moving average 
       if (nrow(power) > 0) {
         cat(paste("Stats for SELECTED power data in: ", source_filename, "\n"))
+        power_display = data.frame(power$Time, power$Power)
+        print(summary(power_display))
+        cat(paste("Variance (sigma^2): ", sprintf("%.2f", var(power$Power)), "\n"))
 
+	events = get_events("/var/log/runlog/index.log")
+	print(head(events$Time))
+        
         ot=power$Time[1]
         cat(paste("The oldest timestamp: ", ot, "\n"))
         lt=power$Time[length(power$Time)]
@@ -108,6 +120,11 @@ shinyServer(function(input, output) {
       # Select and prune
       power = power_filter(range_selection(power_raw, start=input$SelectionRange[1], end=input$SelectionRange[2]),input$LowThresh,input$HighThresh)
       if (nrow(power) > input$AvgWindow) {
+
+	events = get_events("/var/log/runlog/index.log")
+        delta = input$AdjustEvents
+        events_adjusted=data.frame(Time=events$Time+delta, Marker=events$Marker)
+
         # Adding a column with averaged power
         power$PowerAVG = ma(power$Power) 
         # Replacing initial NULL values with non-averaged values
@@ -115,11 +132,23 @@ shinyServer(function(input, output) {
 
         df1=data.frame(Time=power$Time, Power=power$Power)
         df2=data.frame(Time=power$Time, Power=power$PowerAVG)
-        ggplot(df1,aes(Time,Power))+geom_point(aes(color="Raw Samples"))+
+        p = ggplot(df1,aes(Time,Power))+geom_point(aes(color="Raw Samples"))+
         geom_line(data=df2,aes(color="Moving Average"))+
         labs(color="Series")+
         theme(axis.text.x = element_text(angle = 45, hjust = 1))+
         theme(legend.position="bottom")
+
+        n_power = length(power$Time)
+        n_events = length(events$Time)
+        if ( (power$Time[1] > events_adjusted$Time[n_events]) | (power$Time[n_power] < events_adjusted$Time[1]) ) {
+          p
+        }
+        else {
+          p+
+          geom_vline(xintercept=as.numeric(events_adjusted$Time), color="blue")+
+          geom_text(data=events_adjusted, mapping=aes(x=Time, y=0, label=Marker), size=4, angle=90, vjust=-0.6, hjust=0)
+        }
+        
       }
     }
   })

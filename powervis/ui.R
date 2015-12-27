@@ -28,7 +28,9 @@ shinyUI(pageWithSidebar(
     hr(),
     sliderInput("AvgWindow", label = h4("Averaging Window"), min = 0, max = 30, value = 3),
     hr(),
-    sliderInput("SamplingLimit", label = h4("Sampling Limit"), min = 1, max = 30, value = 10)
+    sliderInput("SamplingLimit", label = h4("Sampling Limit"), min = 1, max = 30, value = 10),
+    hr(),
+    sliderInput("AdjustEvents", label = h4("Adjustment for events, seconds"), min = -60, max = 60, value = 0)
   ),
 
 
