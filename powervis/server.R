@@ -13,8 +13,8 @@ shinyServer(function(input, output) {
   
   get_events <- function() {
     if (file.exists(input$EventsFile)) {
-      events = read.csv(input$EventsFile, col.names=c("Marker","Output","TimeRAW","TimeEpoch","Label","CMD"), header=FALSE)
-      return(data.frame(Time=as.POSIXct(events$TimeRAW), Marker=events$Marker))
+      events = read.csv(input$EventsFile, col.names=c("Type","Label","Output","TimeRAW","TimeEpoch","CMD"), header=FALSE)
+      return(data.frame(Time=as.POSIXct(events$TimeRAW), Label=events$Label, Type=events$Type, Output=events$Output))
     }
     else {
       return(NULL)
@@ -35,6 +35,25 @@ shinyServer(function(input, output) {
 
     power_sel=power[power$Time>=t_sel_start & power$Time<=t_sel_end,]
     return(power_sel)
+  }
+
+  event_energy <- function(event_records, power) {
+    if (nrow(event_records) != 2) {
+      cat("Error: more than two records (START and STOP) for a given event. Records:")
+      print(event_records)
+    }
+    lb=event_records[event_records$Type=="START",]$Time
+    ub=event_records[event_records$Type=="END",]$Time
+    #cat(paste(event_records[event_records$Type=="START",]$Label,":\n"))
+
+    trace=power[power$Time>=lb & power$Time<ub,]
+
+    first_deltaT=as.numeric(difftime(trace$Time[1],lb,units="secs"))
+    last_deltaT=as.numeric(difftime(ub,trace$Time[length(trace$Time)],units="secs"))
+
+    trace$deltaT=c(diff(as.numeric(difftime(trace$Time,trace$Time[1],units="secs"))), last_deltaT)
+
+    return(data.frame(Time=c(lb, trace$Time, ub), Energy=c(0, trace$Power[1]*first_deltaT, cumsum(trace$Power * trace$deltaT) + trace$Power[1]*first_deltaT)))
   }
 
   power_filter <- function(power, low, high) {
@@ -123,9 +142,9 @@ shinyServer(function(input, output) {
       if ((input$DisplayEvents) & (! is.null(events_raw)) & (input$FocusOnEvents)) {
         # In this case, focus on events - select the interval based on the earliest and the latest event
         power_raw$Time = as.POSIXct(power_raw$TimeRAW)
-        events=data.frame(Time=events_raw$Time+input$AdjustEvents, Marker=events_raw$Marker)
-        lb = min(events$Time)-30
-        ub = max(events$Time)+30
+        time_range=events_raw$Time+input$AdjustEvents
+        lb = min(time_range)-30
+        ub = max(time_range)+30
         power=power_filter(power_raw[power_raw$Time>=lb & power_raw$Time<=ub,],input$LowThresh,input$HighThresh)
       }
       else {
@@ -157,7 +176,7 @@ shinyServer(function(input, output) {
             p
           }
           else {
-            events=data.frame(Time=events_raw$Time+input$AdjustEvents, Marker=events_raw$Marker)
+            events=data.frame(Time=events_raw$Time+input$AdjustEvents, Label=paste(events_raw$Type,":",events_raw$Label))
             if ( (power$Time[1] > events$Time[length(events$Time)]) | (power$Time[length(power$Time)] < events$Time[1]) ) {
               # Events are outside of the selected range
               p
@@ -166,11 +185,46 @@ shinyServer(function(input, output) {
               # Display events with vertical lines and labels if we get here
               p+
               geom_vline(xintercept=as.numeric(events$Time), color="blue")+
-              geom_text(data=events, mapping=aes(x=Time, y=0, label=Marker), size=4, angle=90, vjust=-0.6, hjust=0)
+              geom_text(data=events, mapping=aes(x=Time, y=0, label=Label), size=4, angle=90, vjust=-0.6, hjust=0)
             }
           }
         }
         
+      }
+    }
+  })
+
+  output$Energy <- renderPrint({
+    source_filename=get_input_filename(input$resource)
+    power_raw = read.csv(source_filename, col.names=c("Resource","TimeRAW","Power"))
+    if (nrow(power_raw) > 0) {
+
+      events_raw = get_events()
+      if ((input$DisplayEvents) & (! is.null(events_raw)))  {
+        power_raw$Time = as.POSIXct(power_raw$TimeRAW)
+        events=data.frame(Time=events_raw$Time+input$AdjustEvents, Label=events_raw$Label, Type=events_raw$Type, ID=events_raw$Output)
+        #print(events)
+        lb = min(events$Time)-30
+        ub = max(events$Time)+30
+        power=power_filter(power_raw[power_raw$Time>=lb & power_raw$Time<=ub,],input$LowThresh,input$HighThresh)
+
+        experiments=unique(events$ID)
+        ex_stats=NULL
+        cat("Stats for experiments in the specified event file:\n")
+        for (ex in experiments) {
+          ex_records=events[events$ID==ex,]
+          energy=event_energy(ex_records, power)
+          #print(energy)
+
+          total_energy=energy$Energy[length(energy$Energy)]
+          total_time=as.numeric(difftime(ex_records[ex_records$Type=="END",]$Time, ex_records[ex_records$Type=="START",]$Time,units="secs"))
+          label=ex_records[ex_records$Type=="START",]$Label
+          ex_stats=rbind(ex_stats, data.frame(Experiment=label, Duration=total_time, TotalEnergy=total_energy))
+        }
+        print(ex_stats)
+      }
+      else {
+        cat("Display of events is disabled or bad file is specified")
       }
     }
   })
