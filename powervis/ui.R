@@ -42,7 +42,7 @@ shinyUI(pageWithSidebar(
     verbatimTextOutput("summary"),
     hr(),
     verbatimTextOutput("analysis"),
-    plotOutput("Scatter", height=350),
+    plotOutput("Scatter", height=550),
     verbatimTextOutput("Energy"),
     plotOutput("HistPower", height=150),
     plotOutput("HistGaps", height=150),

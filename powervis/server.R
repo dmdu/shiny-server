@@ -1,5 +1,6 @@
 library(shiny)
 library('ggplot2')
+library(gridExtra)
 
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
@@ -176,16 +177,32 @@ shinyServer(function(input, output) {
             p
           }
           else {
-            events=data.frame(Time=events_raw$Time+input$AdjustEvents, Label=paste(events_raw$Type,":",events_raw$Label))
+            events=data.frame(Time=events_raw$Time+input$AdjustEvents, Label=events_raw$Label, Type=events_raw$Type, ID=events_raw$Output)
+            events$GraphLabel=paste(events$Type,":",events$Label)
             if ( (power$Time[1] > events$Time[length(events$Time)]) | (power$Time[length(power$Time)] < events$Time[1]) ) {
               # Events are outside of the selected range
               p
             }
             else {
+              # Calculate energy consumption
+              experiments=unique(events$ID)
+              energy_trace=NULL
+              for (ex in experiments) {
+                ex_records=events[events$ID==ex,]
+                energy_trace=rbind(energy_trace,event_energy(ex_records, power))
+              }
+
               # Display events with vertical lines and labels if we get here
-              p+
+              p=p+
               geom_vline(xintercept=as.numeric(events$Time), color="blue")+
-              geom_text(data=events, mapping=aes(x=Time, y=0, label=Label), size=4, angle=90, vjust=-0.6, hjust=0)
+              geom_text(data=events, mapping=aes(x=Time, y=0, label=GraphLabel), size=4, angle=90, vjust=-0.6, hjust=0)
+              
+              p2 = ggplot(energy_trace,aes(Time,Energy))+geom_point(aes(color="Raw Samples"))+
+                theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+                theme(legend.position="none")+
+                geom_vline(xintercept=as.numeric(events$Time), color="blue")
+
+              grid.arrange(p,p2, heights = c(2/3, 1/3))  
             }
           }
         }
