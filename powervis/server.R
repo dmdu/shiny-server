@@ -236,7 +236,11 @@ shinyServer(function(input, output) {
           total_energy=energy$Energy[length(energy$Energy)]
           total_time=as.numeric(difftime(ex_records[ex_records$Type=="END",]$Time, ex_records[ex_records$Type=="START",]$Time,units="secs"))
           label=ex_records[ex_records$Type=="START",]$Label
-          ex_stats=rbind(ex_stats, data.frame(Experiment=label, Duration=total_time, TotalEnergy=total_energy))
+          ex_stats=rbind(ex_stats, data.frame(Experiment=label, 
+		                              Duration.S=total_time, 
+                                              Samples=length(energy$Energy), 
+                                              TotalEnergy.J=total_energy,
+                                              AverageConsumption.W=total_energy/total_time))
         }
         print(ex_stats)
       }
