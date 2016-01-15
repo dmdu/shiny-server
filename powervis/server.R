@@ -2,6 +2,9 @@ library(shiny)
 library('ggplot2')
 library(gridExtra)
 
+TRACES_AT="/var/log/power/"
+PUBLISH_AT="/var/www/"
+
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
 
@@ -9,7 +12,7 @@ shinyServer(function(input, output) {
   ma <- function(z,n=input$AvgWindow){filter(z,rep(1/n,n), sides=1)}
 
   get_input_filename <- function(selected_resource) {
-    source_filename=gsub(" ", "", paste("/var/log/power/",selected_resource))
+    source_filename=gsub(" ", "", paste(TRACES_AT,selected_resource))
   }
   
   get_events <- function() {
@@ -121,9 +124,18 @@ shinyServer(function(input, output) {
         cat(paste("Number of power measurements: ", N, "\n"))
         cat(paste("Average interval between measurements (sec): ", sprintf("%.2f", difftime(lt,ot,units="secs")/N), "\n"))
 
-        #cat("-----------------------\n")
-        #print(head(power))
-
+        if (input$ShowURLs) {
+          output_file=paste(PUBLISH_AT,input$resource,"-power.csv",sep='')
+          # Mode 2 corresponds to write permission
+	  if (file.access(dir(PUBLISH_AT),mode=2)) {
+            write.csv(power,output_file,row.names=FALSE)
+            output_URL=paste("http://", Sys.info()["nodename"], ":8080/", input$resource,"-power.csv",sep='')
+            cat(paste("Download the selected power trace at:\n", output_URL,sep=''))
+          }
+          else {
+	    cat(paste("Error: can't open directory for writing:", PUBLISH_AT))
+          }
+        }
       }
       else {
         cat("Selected interval does not have enough samples in the allowed range.\nGraphs and statistics may not be shown.\n")
@@ -237,12 +249,27 @@ shinyServer(function(input, output) {
           total_time=as.numeric(difftime(ex_records[ex_records$Type=="END",]$Time, ex_records[ex_records$Type=="START",]$Time,units="secs"))
           label=ex_records[ex_records$Type=="START",]$Label
           ex_stats=rbind(ex_stats, data.frame(Experiment=label, 
-		                              Duration.S=total_time, 
+		                              Runtime.S=total_time, 
                                               Samples=length(energy$Energy), 
-                                              TotalEnergy.J=total_energy,
-                                              AverageConsumption.W=total_energy/total_time))
+                                              Energy.J=total_energy,
+                                              AvgPower.W=total_energy/total_time))
         }
         print(ex_stats)
+        # Old way:
+        #dump("ex_stats", "/tmp/energy.Rdmpd")
+        # New way:
+        if (input$ShowURLs) {
+          output_file=paste(PUBLISH_AT,input$resource,"-energy.csv",sep='')
+          # Mode 2 corresponds to write permission
+          if (file.access(dir(PUBLISH_AT),mode=2)) {
+            write.csv(ex_stats,output_file,row.names=FALSE)
+            output_URL=paste("http://", Sys.info()["nodename"], ":8080/", input$resource,"-energy.csv",sep='')
+            cat(paste("Download this energy summary at:\n", output_URL,sep=''))
+          }
+          else {
+            cat(paste("Error: can't open directory for writing:", PUBLISH_AT))
+          }
+        }
       }
       else {
         cat("Display of events is disabled or bad file is specified")

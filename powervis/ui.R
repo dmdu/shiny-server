@@ -19,6 +19,8 @@ shinyUI(pageWithSidebar(
       selected = default),
     helpText("Note: all these files are found in /var/log/power"),
     hr(),
+    checkboxInput("ShowURLs", label = "Show dataset URLs", value = FALSE),
+    hr(),
     sliderInput("SelectionRange", label = h4("Select boundaries for visualization"), min = 0,
         max = 100, value = c(95, 100)),
     helpText("Note: 100% corresponds to the latest record in the file, 0% - to the oldest"),
