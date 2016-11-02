@@ -27,7 +27,7 @@ shinyUI(pageWithSidebar(
     sliderInput("LowThresh", label = h4("Low Power Threshold"), min = 0, max = 50, value = 10),
     sliderInput("HighThresh", label = h4("High Power Threshold"), min = 100, max = 500, value = 300),
     hr(),
-    sliderInput("AvgWindow", label = h4("Averaging Window"), min = 0, max = 30, value = 3),
+    sliderInput("AvgWindow", label = h4("Averaging Window"), min = 1, max = 30, value = 1),
     hr(),
     checkboxInput("DisplayEvents", label = "Display Events", value = FALSE),
     checkboxInput("FocusOnEvents", label = "If Display Events is enabled, override selected boundaries", value = TRUE),
